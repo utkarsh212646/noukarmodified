@@ -14,11 +14,12 @@ async def batch(client: Client, message: Message):
     waiting_for_first_msg = True
     waiting_for_second_msg = False
     first_msg_id = None
+    handler_removed = False
     
     # Use custom handler instead of client.listen()
     @client.on_message(filters.private & filters.user(message.from_user.id))
     async def batch_handler(c, msg):
-        nonlocal waiting_for_first_msg, waiting_for_second_msg, first_msg_id
+        nonlocal waiting_for_first_msg, waiting_for_second_msg, first_msg_id, handler_removed
         
         try:
             # Process first message
@@ -43,8 +44,14 @@ async def batch(client: Client, message: Message):
             elif waiting_for_second_msg:
                 waiting_for_second_msg = False
                 
-                # Remove handler as we don't need it anymore
-                client.remove_handler(batch_handler)
+                # Remove handler safely
+                if not handler_removed:
+                    try:
+                        client.remove_handler(batch_handler)
+                        handler_removed = True
+                    except ValueError:
+                        # Handler already removed, ignore
+                        pass
                 
                 # Check if message is valid
                 s_msg_id = await get_message_id(client, msg)
@@ -66,15 +73,33 @@ async def batch(client: Client, message: Message):
         except Exception as e:
             print(f"Error in batch handler: {e}")
             await msg.reply_text(f"❌ Error: {str(e)}\n\nPlease try again.")
-            client.remove_handler(batch_handler)
+            
+            # Safe handler removal in case of error
+            if not handler_removed:
+                try:
+                    client.remove_handler(batch_handler)
+                    handler_removed = True
+                except ValueError:
+                    # Handler already removed, ignore
+                    pass
     
     # Start the process
     try:
         # Set a timer to automatically remove handler after timeout
         async def timeout_handler():
+            nonlocal handler_removed
             await asyncio.sleep(60)  # 60 seconds timeout
+            
             if waiting_for_first_msg or waiting_for_second_msg:
-                client.remove_handler(batch_handler)
+                # Safe handler removal for timeout
+                if not handler_removed:
+                    try:
+                        client.remove_handler(batch_handler)
+                        handler_removed = True
+                    except ValueError:
+                        # Handler already removed, ignore
+                        pass
+                    
                 await message.reply_text("⏱️ Timeout! Process cancelled.")
         
         asyncio.create_task(timeout_handler())
@@ -84,7 +109,12 @@ async def batch(client: Client, message: Message):
         
     except Exception as e:
         print(f"Error starting batch process: {e}")
-        client.remove_handler(batch_handler)
+        # Safe handler removal in case of startup error
+        try:
+            client.remove_handler(batch_handler)
+        except ValueError:
+            # Handler might not be added yet, ignore
+            pass
         await message.reply_text(f"❌ Error: {str(e)}\n\nPlease try again.")
 
 
@@ -92,16 +122,24 @@ async def batch(client: Client, message: Message):
 async def link_generator(client: Client, message: Message):
     """Generate a link for a single file"""
     waiting_for_msg = True
+    handler_removed = False
     
     # Use custom handler instead of client.listen()
     @client.on_message(filters.private & filters.user(message.from_user.id))
     async def genlink_handler(c, msg):
-        nonlocal waiting_for_msg
+        nonlocal waiting_for_msg, handler_removed
         
         if waiting_for_msg:
             waiting_for_msg = False
-            # Remove handler as we don't need it anymore
-            client.remove_handler(genlink_handler)
+            
+            # Safe handler removal
+            if not handler_removed:
+                try:
+                    client.remove_handler(genlink_handler)
+                    handler_removed = True
+                except ValueError:
+                    # Handler already removed, ignore
+                    pass
             
             try:
                 msg_id = await get_message_id(client, msg)
@@ -126,9 +164,19 @@ async def link_generator(client: Client, message: Message):
     try:
         # Set a timer to automatically remove handler after timeout
         async def timeout_handler():
+            nonlocal handler_removed
             await asyncio.sleep(60)  # 60 seconds timeout
+            
             if waiting_for_msg:
-                client.remove_handler(genlink_handler)
+                # Safe handler removal for timeout
+                if not handler_removed:
+                    try:
+                        client.remove_handler(genlink_handler)
+                        handler_removed = True
+                    except ValueError:
+                        # Handler already removed, ignore
+                        pass
+                    
                 await message.reply_text("⏱️ Timeout! Process cancelled.")
         
         asyncio.create_task(timeout_handler())
@@ -138,5 +186,10 @@ async def link_generator(client: Client, message: Message):
         
     except Exception as e:
         print(f"Error starting genlink process: {e}")
-        client.remove_handler(genlink_handler)
+        # Safe handler removal in case of startup error
+        try:
+            client.remove_handler(genlink_handler)
+        except ValueError:
+            # Handler might not be added yet, ignore
+            pass
         await message.reply_text(f"❌ Error: {str(e)}\n\nPlease try again.")
