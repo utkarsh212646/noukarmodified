@@ -11,12 +11,13 @@ from bot import Bot
 from config import (
     ADMINS, FORCE_MSG, START_MSG, CUSTOM_CAPTION, DISABLE_CHANNEL_BUTTON, 
     PROTECT_CONTENT, START_PIC, AUTO_DELETE_TIME, AUTO_DELETE_MSG, 
-    JOIN_REQUEST_ENABLE, FORCE_SUB_CHANNEL, HEAVY_LOAD_MSG
+    JOIN_REQUEST_ENABLE, FORCE_SUB_CHANNEL, HEAVY_LOAD_MSG, OWNER_ID
 )
 from helper_func import (
     subscribed, decode, process_file_request, delete_file
 )
 from database.database import add_user, del_user, full_userbase, present_user
+from datetime import datetime
 
 # Function to send media files to user
 async def send_media_and_reply(client, message, messages, temp_msg=None):
@@ -215,9 +216,9 @@ async def get_users(client: Bot, message: Message):
     users = await full_userbase()
     await msg.edit(f"{len(users)} users are using this bot")
 
-@Bot.on_message(filters.private & filters.command('broadcast') & filters.user(ADMINS))
+@Bot.on_message(filters.private & filters.command('broadcast') & filters.user(OWNER_ID))
 async def send_text(client: Bot, message: Message):
-    """Admin command to broadcast message to all users"""
+    """Owner command to broadcast message to all users"""
     if message.reply_to_message:
         query = await full_userbase()
         broadcast_msg = message.reply_to_message
@@ -228,35 +229,59 @@ async def send_text(client: Bot, message: Message):
         unsuccessful = 0
         
         pls_wait = await message.reply("<i>Broadcasting Message.. This will Take Some Time</i>")
+        start_time = datetime.now()
+        
         for chat_id in query:
             try:
                 await broadcast_msg.copy(chat_id)
                 successful += 1
             except FloodWait as e:
                 await asyncio.sleep(e.value)
-                await broadcast_msg.copy(chat_id)
-                successful += 1
+                try:
+                    await broadcast_msg.copy(chat_id)
+                    successful += 1
+                except:
+                    unsuccessful += 1
             except UserIsBlocked:
                 await del_user(chat_id)
                 blocked += 1
             except InputUserDeactivated:
                 await del_user(chat_id)
                 deleted += 1
-            except:
+            except Exception as e:
+                print(f"Error broadcasting to {chat_id}: {e}")
                 unsuccessful += 1
-                pass
             total += 1
-        
-        status = f"""<b><u>Broadcast Completed</u>
+            
+            # Show progress every 50 users
+            if total % 50 == 0:
+                progress = f"""<b>Broadcast Progress 📊</b>
+                
+<b>Total Users:</b> {len(query)}
+<b>Completed:</b> {total} / {len(query)} (<code>{total/len(query)*100:.1f}%</code>)
+<b>Success:</b> {successful}
+<b>Failed:</b> {unsuccessful + blocked + deleted}
 
-Total Users: <code>{total}</code>
-Successful: <code>{successful}</code>
-Blocked Users: <code>{blocked}</code>
-Deleted Accounts: <code>{deleted}</code>
-Unsuccessful: <code>{unsuccessful}</code></b>"""
+<i>Please wait, broadcasting in progress...</i>"""
+                await pls_wait.edit(progress)
+        
+        time_taken = datetime.now() - start_time
+        
+        status = f"""<b>✅ Broadcast Completed</b>
+
+<b>📊 Statistics:</b>
+• <b>Total Users:</b> <code>{total}</code>
+• <b>Successful:</b> <code>{successful}</code> (<code>{successful/total*100:.1f}%</code>)
+• <b>Blocked Users:</b> <code>{blocked}</code>
+• <b>Deleted Accounts:</b> <code>{deleted}</code>
+• <b>Failed Delivery:</b> <code>{unsuccessful}</code>
+
+<b>⏱ Time Taken:</b> <code>{time_taken.seconds}</code> seconds
+
+<i>Note: Blocked and deleted users have been removed from the database</i>"""
         
         return await pls_wait.edit(status)
     else:
-        msg = await message.reply("Reply to a message to broadcast it to users.")
+        msg = await message.reply("❌ Please reply to a message to broadcast it to users.")
         await asyncio.sleep(5)
         await msg.delete()
