@@ -1,0 +1,16 @@
+# --- For-Bot-Working --------- #
+pyrogram>=2.0.0
+TgCrypto
+pyromod==1.5
+python-dotenv
+# --- For-Database ------------ #
+pymongo
+dnspython
+motor>=2.5.0
+# --- For-Caching ------------ #
+redis>=4.3.4
+# --- For-Web-Response ------- #
+aiohttp
+uvloop ; platform_system != "Windows"
+git+https://github.com/Hrishi2861/pyrofork-2.2.11-peer-fix.git
+humanize
