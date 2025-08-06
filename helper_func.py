@@ -69,27 +69,70 @@ async def get_messages(client, message_ids):
     return messages
 
 async def get_message_id(client, message):
-    if message.forward_from_chat:
-        if message.forward_from_chat.id == client.db_channel.id:
-            return message.forward_from_message_id
-        else:
+    """Extract message ID from forwarded message or link
+    Returns message_id (int) if successful, 0 otherwise
+    """
+    try:
+        # Case 1: Message is forwarded from the correct channel
+        if message.forward_from_chat:
+            if message.forward_from_chat.id == client.db_channel.id:
+                return message.forward_from_message_id
+            else:
+                print(f"Forward from wrong channel: {message.forward_from_chat.id} != {client.db_channel.id}")
+                return 0
+                
+        # Case 2: Message has hidden sender info
+        elif message.forward_sender_name:
+            print("Forward with hidden sender info")
             return 0
-    elif message.forward_sender_name:
-        return 0
-    elif message.text:
-        pattern = "https://t.me/(?:c/)?(.*)/(\d+)"
-        matches = re.match(pattern,message.text)
-        if not matches:
+            
+        # Case 3: Message contains a telegram link
+        elif message.text:
+            # Support both t.me/c/123456789/123 and t.me/channel_name/123 formats
+            patterns = [
+                r"https?://t\.me/c/(\d+)/(\d+)",           # Private channel format
+                r"https?://t\.me/([A-Za-z0-9_]+)/(\d+)"    # Public channel format
+            ]
+            
+            for pattern in patterns:
+                matches = re.match(pattern, message.text.strip())
+                if matches:
+                    # Handle based on pattern type
+                    if "c/" in pattern:  # Private channel
+                        channel_id = int(matches.group(1))
+                        msg_id = int(matches.group(2))
+                        if f"-100{channel_id}" == str(client.db_channel.id):
+                            print(f"Extracted msg ID from private channel link: {msg_id}")
+                            return msg_id
+                        else:
+                            print(f"Channel ID mismatch: -100{channel_id} != {client.db_channel.id}")
+                    else:  # Public channel
+                        channel_username = matches.group(1)
+                        msg_id = int(matches.group(2))
+                        # Check if channel username matches
+                        if client.db_channel.username and channel_username == client.db_channel.username:
+                            print(f"Extracted msg ID from public channel link: {msg_id}")
+                            return msg_id
+                        # If usernames don't match, try to get channel info to check ID
+                        try:
+                            chat = await client.get_chat(f"@{channel_username}")
+                            if chat.id == client.db_channel.id:
+                                print(f"Validated channel by ID, extracted msg_id: {msg_id}")
+                                return msg_id
+                            else:
+                                print(f"Channel username resolved but ID mismatch: {chat.id} != {client.db_channel.id}")
+                        except Exception as e:
+                            print(f"Error validating channel username: {e}")
+            
+            # Debug output if no pattern matched
+            print(f"No pattern matched text: {message.text}")
             return 0
-        channel_id = matches.group(1)
-        msg_id = int(matches.group(2))
-        if channel_id.isdigit():
-            if f"-100{channel_id}" == str(client.db_channel.id):
-                return msg_id
         else:
-            if channel_id == client.db_channel.username:
-                return msg_id
-    else:
+            # Not a forward or text message
+            return 0
+            
+    except Exception as e:
+        print(f"Error in get_message_id: {e}")
         return 0
 
 def get_readable_time(seconds: int) -> str:
