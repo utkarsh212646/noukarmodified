@@ -1,23 +1,18 @@
-#(©)CodeXBotz
+#(©) @ThealphaBotz And @Allenspark10 on Telegram
 
-import pymongo
 import motor.motor_asyncio
 import logging
 from config import DB_URI, DB_NAME
-from redis_helper import (
-    get_cached_user, cache_user, 
-    init_redis
-)
+from redis_helper import get_cached_user, cache_user, init_redis
 
-# MongoDB client
 client = None
 database = None
 user_data = None
+join_requests = None
 
 async def init_mongo():
-    global client, database, user_data
+    global client, database, user_data, join_requests
     try:
-        # Create connection with connection pooling
         client = motor.motor_asyncio.AsyncIOMotorClient(
             DB_URI,
             maxPoolSize=50,
@@ -28,9 +23,11 @@ async def init_mongo():
         
         database = client[DB_NAME]
         user_data = database['users']
+        join_requests = database['join_requests']
         
-        # Create index for faster lookups
         await user_data.create_index('_id')
+        await join_requests.create_index([('user_id', 1), ('channel_id', 1)])
+        await join_requests.create_index('timestamp')
         
         logging.info("MongoDB connection established successfully")
         return True
@@ -39,29 +36,22 @@ async def init_mongo():
         return False
 
 async def init_database():
-    """Initialize all database connections"""
     mongo_success = await init_mongo()
     redis_success = init_redis()
-    
     return mongo_success
 
 async def present_user(user_id: int):
-    """Check if user exists in database using Redis cache when available"""
-    # First check Redis cache
     cached_result = get_cached_user(user_id)
     if cached_result is not None:
         return cached_result
     
-    # If not in cache, check database
     found = await user_data.find_one({'_id': user_id})
     result = bool(found)
     
-    # Update cache
     cache_user(user_id, result)
     return result
 
 async def add_user(user_id: int):
-    """Add user to database if not exists"""
     if not await present_user(user_id):
         try:
             await user_data.insert_one({'_id': user_id})
@@ -71,7 +61,6 @@ async def add_user(user_id: int):
     return
 
 async def full_userbase():
-    """Get all user IDs from database"""
     user_ids = []
     try:
         cursor = user_data.find({}, {'_id': 1})
@@ -79,15 +68,55 @@ async def full_userbase():
             user_ids.append(doc['_id'])
     except Exception as e:
         logging.error(f"Error retrieving users: {e}")
-    
     return user_ids
 
 async def del_user(user_id: int):
-    """Delete user from database"""
     try:
         await user_data.delete_one({'_id': user_id})
         cache_user(user_id, False)
     except Exception as e:
         logging.error(f"Error deleting user {user_id}: {e}")
     return
-  
+
+async def add_join_request(user_id: int, channel_id: int):
+    try:
+        await join_requests.update_one(
+            {'user_id': user_id, 'channel_id': channel_id},
+            {'$set': {
+                'user_id': user_id,
+                'channel_id': channel_id,
+                'timestamp': datetime.datetime.utcnow()
+            }},
+            upsert=True
+        )
+    except Exception as e:
+        logging.error(f"Error adding join request: {e}")
+
+async def remove_join_request(user_id: int, channel_id: int):
+    try:
+        await join_requests.delete_one({
+            'user_id': user_id,
+            'channel_id': channel_id
+        })
+    except Exception as e:
+        logging.error(f"Error removing join request: {e}")
+
+async def check_join_request(user_id: int, channel_id: int):
+    try:
+        request = await join_requests.find_one({
+            'user_id': user_id,
+            'channel_id': channel_id
+        })
+        return bool(request)
+    except Exception as e:
+        logging.error(f"Error checking join request: {e}")
+        return False
+
+async def clean_old_requests(hours=24):
+    try:
+        expiry = datetime.datetime.utcnow() - datetime.timedelta(hours=hours)
+        await join_requests.delete_many({
+            'timestamp': {'$lt': expiry}
+        })
+    except Exception as e:
+        logging.error(f"Error cleaning old requests: {e}")
