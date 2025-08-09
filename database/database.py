@@ -1,5 +1,5 @@
 #(©) @ThealphaBotz And @Allenspark10 on Telegram
-
+import datetime
 import motor.motor_asyncio
 import logging
 from config import DB_URI, DB_NAME
@@ -29,10 +29,8 @@ async def init_mongo():
         await join_requests.create_index([('user_id', 1), ('channel_id', 1)])
         await join_requests.create_index('timestamp')
         
-        logging.info("MongoDB connection established successfully")
         return True
     except Exception as e:
-        logging.error(f"Database connection failed: {e}")
         return False
 
 async def init_database():
@@ -57,7 +55,7 @@ async def add_user(user_id: int):
             await user_data.insert_one({'_id': user_id})
             cache_user(user_id, True)
         except Exception as e:
-            logging.error(f"Error adding user {user_id}: {e}")
+            pass
     return
 
 async def full_userbase():
@@ -67,7 +65,7 @@ async def full_userbase():
         async for doc in cursor:
             user_ids.append(doc['_id'])
     except Exception as e:
-        logging.error(f"Error retrieving users: {e}")
+        pass
     return user_ids
 
 async def del_user(user_id: int):
@@ -75,22 +73,24 @@ async def del_user(user_id: int):
         await user_data.delete_one({'_id': user_id})
         cache_user(user_id, False)
     except Exception as e:
-        logging.error(f"Error deleting user {user_id}: {e}")
+        pass
     return
 
 async def add_join_request(user_id: int, channel_id: int):
     try:
         await join_requests.update_one(
             {'user_id': user_id, 'channel_id': channel_id},
-            {'$set': {
-                'user_id': user_id,
-                'channel_id': channel_id,
-                'timestamp': datetime.datetime.utcnow()
-            }},
+            {
+                '$set': {
+                    'user_id': user_id,
+                    'channel_id': channel_id,
+                    'timestamp': datetime.datetime.utcnow()
+                }
+            },
             upsert=True
         )
     except Exception as e:
-        logging.error(f"Error adding join request: {e}")
+        pass
 
 async def remove_join_request(user_id: int, channel_id: int):
     try:
@@ -99,7 +99,7 @@ async def remove_join_request(user_id: int, channel_id: int):
             'channel_id': channel_id
         })
     except Exception as e:
-        logging.error(f"Error removing join request: {e}")
+        pass
 
 async def check_join_request(user_id: int, channel_id: int):
     try:
@@ -109,7 +109,6 @@ async def check_join_request(user_id: int, channel_id: int):
         })
         return bool(request)
     except Exception as e:
-        logging.error(f"Error checking join request: {e}")
         return False
 
 async def clean_old_requests(hours=24):
@@ -119,4 +118,4 @@ async def clean_old_requests(hours=24):
             'timestamp': {'$lt': expiry}
         })
     except Exception as e:
-        logging.error(f"Error cleaning old requests: {e}")
+        pass
