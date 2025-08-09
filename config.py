@@ -40,8 +40,7 @@ USER_REQUEST_COOLDOWN = float(os.environ.get("USER_REQUEST_COOLDOWN", "1"))  # S
 BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "10"))  # Number of files to process at once
 
 #force sub channel id, if you want enable force sub
-FORCE_SUB_CHANNEL = int(os.environ.get("FORCE_SUB_CHANNEL", "-1002759209644")
-
+FORCE_SUB_CHANNEL = int(os.environ.get("FORCE_SUB_CHANNEL", "-1002759209644"))
 TG_BOT_WORKERS = int(os.environ.get("TG_BOT_WORKERS", "6"))  # Increased default worker count
 
 #start message
