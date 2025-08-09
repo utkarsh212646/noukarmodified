@@ -40,8 +40,7 @@ USER_REQUEST_COOLDOWN = float(os.environ.get("USER_REQUEST_COOLDOWN", "1"))  # S
 BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "10"))  # Number of files to process at once
 
 #force sub channel id, if you want enable force sub
-FORCE_SUB_CHANNEL = int(os.environ.get("FORCE_SUB_CHANNEL", "-1002759209644"))
-JOIN_REQUEST_ENABLE = os.environ.get("JOIN_REQUEST_ENABLED", None)
+FORCE_SUB_CHANNEL = int(os.environ.get("FORCE_SUB_CHANNEL", "-1002759209644")
 
 TG_BOT_WORKERS = int(os.environ.get("TG_BOT_WORKERS", "6"))  # Increased default worker count
 
@@ -63,6 +62,22 @@ CUSTOM_CAPTION = os.environ.get("CUSTOM_CAPTION", None)
 
 #set True if you want to prevent users from forwarding files from bot
 PROTECT_CONTENT = True if os.environ.get('PROTECT_CONTENT', "True") == "True" else False
+
+# Join Req Config
+
+JOIN_REQUEST_ENABLED = os.environ.get("JOIN_REQUEST_ENABLED", "True") == "True"
+FORCE_SUB_CHANNELS = [int(x) for x in os.environ.get("FORCE_SUB_CHANNELS", "-1002759209644").split(",") if x]
+
+REQUEST_TRACKING_COLLECTION = os.environ.get("REQUEST_TRACKING_COLLECTION", "join_requests")
+
+REQUEST_CLEANUP_INTERVAL = int(os.environ.get("REQUEST_CLEANUP_INTERVAL", "3600"))
+REQUEST_EXPIRY_HOURS = int(os.environ.get("REQUEST_EXPIRY_HOURS", "24"))
+
+INVITE_LINK_CACHE_TIME = int(os.environ.get("INVITE_LINK_CACHE_TIME", "3600"))
+MAX_INVITE_LINKS_PER_CHANNEL = int(os.environ.get("MAX_INVITE_LINKS_PER_CHANNEL", "100"))
+
+MAX_CONCURRENT_REQUESTS = int(os.environ.get("MAX_CONCURRENT_REQUESTS", "100"))
+USER_REQUEST_COOLDOWN = float(os.environ.get("USER_REQUEST_COOLDOWN", "1"))
 
 # Auto delete time in seconds.
 AUTO_DELETE_TIME = int(os.getenv("AUTO_DELETE_TIME", "1200"))
