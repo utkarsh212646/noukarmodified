@@ -1,3 +1,6 @@
+# © @TheAlphaBotz for this code 
+# @TheAlphaBotz [2021-2025]
+# © Utkarsh dubey [github.com/utkarshdubey2008] 
 from pyrogram import Client, filters
 from pyrogram.enums import ParseMode, ChatMemberStatus, ChatType
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, ChatJoinRequest
