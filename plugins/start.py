@@ -111,62 +111,79 @@ async def check_subscription(client, user_id):
             continue
     return True
 
-async def get_invite_links(client):
+async def generate_invite_links(client, user_id):
     buttons = []
-    for channel_id in FORCE_SUB_CHANNELS:
-        try:
+    try:
+        for channel_id in FORCE_SUB_CHANNELS:
             chat = await client.get_chat(channel_id)
-            if JOIN_REQUEST_ENABLED:
-                invite = await client.create_chat_invite_link(
-                    chat_id=channel_id,
-                    creates_join_request=True
-                )
-                link = invite.invite_link
-            else:
-                link = f"https://t.me/{chat.username}" if chat.username else chat.invite_link or "Invalid Link"
             
-            buttons.append([InlineKeyboardButton(f"📢 Join {chat.title}", url=link)])
-        except Exception as e:
-            print(f"Error creating invite link for {channel_id}: {e}")
-            continue
+            if JOIN_REQUEST_ENABLED:
+                try:
+                    invite = await client.create_chat_invite_link(
+                        chat_id=channel_id,
+                        creates_join_request=True,
+                        name=f"User_{user_id}_{datetime.datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+                    )
+                    link = invite.invite_link
+                except FloodWait as e:
+                    await asyncio.sleep(e.value)
+                    continue
+            else:
+                link = f"https://t.me/{chat.username}" if chat.username else chat.invite_link
+            
+            if link:
+                buttons.append([InlineKeyboardButton(f"📢 Join {chat.title}", url=link)])
+    except Exception as e:
+        print(f"Error generating invite links: {e}")
     
-    buttons.append([InlineKeyboardButton("🔄 Refresh Status", callback_data="check_sub")])
-    return InlineKeyboardMarkup(buttons)
+    if buttons:
+        buttons.append([InlineKeyboardButton("🔄 Check Subscription", callback_data=f"checksub_{user_id}")])
+    
+    return InlineKeyboardMarkup(buttons) if buttons else None
 
 @Bot.on_chat_join_request()
 async def handle_join_request(client: Client, join_request: ChatJoinRequest):
     if join_request.chat.id in FORCE_SUB_CHANNELS:
-        await add_join_request(join_request.from_user.id, join_request.chat.id)
+        try:
+            await add_join_request(join_request.from_user.id, join_request.chat.id)
+        except Exception as e:
+            print(f"Error handling join request: {e}")
 
 @Bot.on_chat_member_updated()
 async def handle_member_update(client: Client, member_updated):
     if member_updated.chat.id in FORCE_SUB_CHANNELS:
         if member_updated.new_chat_member and member_updated.new_chat_member.status in [ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER]:
-            await remove_join_request(member_updated.from_user.id, member_updated.chat.id)
+            try:
+                await remove_join_request(member_updated.from_user.id, member_updated.chat.id)
+            except Exception as e:
+                print(f"Error handling member update: {e}")
 
-@Bot.on_message(filters.command('start') & filters.private & subscribed)
+@Bot.on_message(filters.command('start') & filters.private)
 async def start_command(client: Client, message: Message):
-    id = message.from_user.id
-    if not await present_user(id):
-        try:
-            await add_user(id)
-        except:
-            pass
+    user_id = message.from_user.id
     
-    if not await check_subscription(client, id):
-        buttons = await get_invite_links(client)
-        return await message.reply(
-            text=FORCE_MSG.format(
-                first=message.from_user.first_name,
-                last=message.from_user.last_name,
-                username=None if not message.from_user.username else '@' + message.from_user.username,
-                mention=message.from_user.mention,
-                id=message.from_user.id
-            ),
-            reply_markup=buttons,
-            quote=True,
-            disable_web_page_preview=True
-        )
+    try:
+        if not await present_user(user_id):
+            await add_user(user_id)
+    except Exception as e:
+        print(f"Error adding user: {e}")
+
+    if not await check_subscription(client, user_id):
+        buttons = await generate_invite_links(client, user_id)
+        if buttons:
+            await message.reply(
+                text=FORCE_MSG.format(
+                    first=message.from_user.first_name,
+                    last=message.from_user.last_name,
+                    username=None if not message.from_user.username else '@' + message.from_user.username,
+                    mention=message.from_user.mention,
+                    id=user_id
+                ),
+                reply_markup=buttons,
+                quote=True,
+                disable_web_page_preview=True
+            )
+            return
 
     text = message.text
     if len(text) > 7:
@@ -179,12 +196,10 @@ async def start_command(client: Client, message: Message):
             await message.reply_text("Invalid link or format. Please use a valid file link.", quote=True)
             return
 
-    reply_markup = InlineKeyboardMarkup(
-        [[
-            InlineKeyboardButton("😊 About Me", callback_data="about"),
-            InlineKeyboardButton("🔒 Close", callback_data="close")
-        ]]
-    )
+    reply_markup = InlineKeyboardMarkup([[
+        InlineKeyboardButton("😊 About Me", callback_data="about"),
+        InlineKeyboardButton("🔒 Close", callback_data="close")
+    ]])
     
     if START_PIC:
         await message.reply_photo(
@@ -194,7 +209,7 @@ async def start_command(client: Client, message: Message):
                 last=message.from_user.last_name,
                 username=None if not message.from_user.username else '@' + message.from_user.username,
                 mention=message.from_user.mention,
-                id=message.from_user.id
+                id=user_id
             ),
             reply_markup=reply_markup,
             quote=True
@@ -206,65 +221,22 @@ async def start_command(client: Client, message: Message):
                 last=message.from_user.last_name,
                 username=None if not message.from_user.username else '@' + message.from_user.username,
                 mention=message.from_user.mention,
-                id=message.from_user.id
+                id=user_id
             ),
             reply_markup=reply_markup,
             disable_web_page_preview=True,
             quote=True
         )
 
-@Bot.on_message(filters.command('start') & filters.private)
-async def not_joined(client: Client, message: Message):
-    buttons = []
-    if bool(JOIN_REQUEST_ENABLED):
-        for channel_id in FORCE_SUB_CHANNELS:
-            try:
-                invite = await client.create_chat_invite_link(
-                    chat_id=channel_id,
-                    creates_join_request=True
-                )
-                buttons.append([InlineKeyboardButton("Join Channel", url=invite.invite_link)])
-            except Exception as e:
-                print(f"Error creating invite link: {e}")
-                continue
-    else:
-        for channel_id in FORCE_SUB_CHANNELS:
-            try:
-                chat = await client.get_chat(channel_id)
-                link = f"https://t.me/{chat.username}" if chat.username else chat.invite_link
-                if link:
-                    buttons.append([InlineKeyboardButton("Join Channel", url=link)])
-            except Exception as e:
-                print(f"Error getting chat link: {e}")
-                continue
-
-    try:
-        buttons.append(
-            [InlineKeyboardButton(
-                text='Try Again',
-                url=f"https://t.me/{client.username}?start={message.command[1]}"
-            )]
-        )
-    except IndexError:
-        pass
-
-    await message.reply(
-        text=FORCE_MSG.format(
-            first=message.from_user.first_name,
-            last=message.from_user.last_name,
-            username=None if not message.from_user.username else '@' + message.from_user.username,
-            mention=message.from_user.mention,
-            id=message.from_user.id
-        ),
-        reply_markup=InlineKeyboardMarkup(buttons),
-        quote=True,
-        disable_web_page_preview=True
-    )
-
-@Bot.on_callback_query(filters.regex("check_sub"))
+@Bot.on_callback_query(filters.regex("^checksub_"))
 async def check_subscription_callback(client: Client, callback: CallbackQuery):
-    if await check_subscription(client, callback.from_user.id):
-        await callback.message.edit("✅ Access granted! You can use the bot now.")
+    user_id = int(callback.data.split("_")[1])
+    
+    if callback.from_user.id != user_id:
+        return await callback.answer("This button is not for you!", show_alert=True)
+    
+    if await check_subscription(client, user_id):
+        await callback.message.edit("✅ Thank you for subscribing! Send /start to use the bot.")
     else:
         await callback.answer("❌ You haven't joined all channels yet!", show_alert=True)
 
@@ -312,7 +284,6 @@ async def send_text(client: Bot, message: Message):
             
             if total % 50 == 0:
                 progress = f"""<b>Broadcast Progress 📊</b>
-                
 <b>Total Users:</b> {len(query)}
 <b>Completed:</b> {total} / {len(query)} (<code>{total/len(query)*100:.1f}%</code>)
 <b>Success:</b> {successful}
@@ -342,8 +313,11 @@ async def send_text(client: Bot, message: Message):
 
 async def cleanup_old_requests():
     while True:
-        await asyncio.sleep(3600)
-        await clean_old_requests(24)
+        try:
+            await asyncio.sleep(3600)
+            await clean_old_requests(24)
+        except Exception as e:
+            print(f"Error in cleanup: {e}")
 
 if __name__ == "__main__":
     asyncio.create_task(cleanup_old_requests())
